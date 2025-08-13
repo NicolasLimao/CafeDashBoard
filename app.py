@@ -7,7 +7,7 @@ CLIENTES_FILE = 'clientes.csv'
 VENDAS_FILE = 'vendas.csv'
 PRODUTOS_FILE = 'produtos.csv'
 
-# Verifica se os arquivos CSV existem, caso contrário, cria-os com as colunas apropriadas
+# Verifica se os arquivos CSV existem, caso não, cria-os com colunas padrão
 if not os.path.exists(CLIENTES_FILE):
     pd.DataFrame(columns=['id', 'nome', 'telefone']).to_csv(CLIENTES_FILE, index=False)
 
@@ -21,47 +21,56 @@ if not os.path.exists(PRODUTOS_FILE):
 def carregar_clientes():
     if os.path.getsize(CLIENTES_FILE) == 0:
         return pd.DataFrame(columns=["id", "nome", "telefone"])
-    return pd.read_csv(CLIENTES_FILE)
+    df = pd.read_csv(CLIENTES_FILE)
+    return df
 
 def carregar_vendas():
     if os.path.getsize(VENDAS_FILE) == 0:
         return pd.DataFrame(columns=["cliente_id", "produto", "quantidade", "data"])
-    return pd.read_csv(VENDAS_FILE)
+    df = pd.read_csv(VENDAS_FILE)
+    # Garante tipo numérico para quantidade
+    if 'quantidade' in df.columns:
+        df['quantidade'] = pd.to_numeric(df['quantidade'], errors='coerce').fillna(0).astype(int)
+    return df
 
 def carregar_produtos():
     if os.path.getsize(PRODUTOS_FILE) == 0:
         return pd.DataFrame(columns=["id", "nome", "preco"])
-    return pd.read_csv(PRODUTOS_FILE)
+    df = pd.read_csv(PRODUTOS_FILE)
+    # Garante tipo numérico para preço
+    if 'preco' in df.columns:
+        df['preco'] = pd.to_numeric(df['preco'], errors='coerce').fillna(0.0)
+    return df
 
 def salvar_cliente(nome, telefone):
     df = carregar_clientes()
     novo_id = df['id'].max() + 1 if not df.empty else 1
-    novo_cliente = pd.DataFrame({'id': [novo_id], 'nome': [nome], 'telefone': [telefone]})
-    df = pd.concat([df, novo_cliente])
+    novo_cliente = pd.DataFrame({'id': [int(novo_id)], 'nome': [nome], 'telefone': [telefone]})
+    df = pd.concat([df, novo_cliente], ignore_index=True)
     df.to_csv(CLIENTES_FILE, index=False)
 
 def salvar_venda(cliente_id, produto, quantidade):
     df = carregar_vendas()
-    nova_venda = pd.DataFrame([[cliente_id, produto, quantidade, datetime.today().strftime('%Y-%m-%d')]],
+    nova_venda = pd.DataFrame([[int(cliente_id), produto, int(quantidade), datetime.today().strftime('%Y-%m-%d')]],
                                columns=['cliente_id', 'produto', 'quantidade', 'data'])
-    df = pd.concat([df, nova_venda])
+    df = pd.concat([df, nova_venda], ignore_index=True)
     df.to_csv(VENDAS_FILE, index=False)
 
 def salvar_produto(nome, preco):
     df = carregar_produtos()
     novo_id = df['id'].max() + 1 if not df.empty else 1
-    novo_produto = pd.DataFrame({'id': [novo_id], 'nome': [nome], 'preco': [preco]})
-    df = pd.concat([df, novo_produto])
+    novo_produto = pd.DataFrame({'id': [int(novo_id)], 'nome': [nome], 'preco': [float(preco)]})
+    df = pd.concat([df, novo_produto], ignore_index=True)
     df.to_csv(PRODUTOS_FILE, index=False)
     
 def excluir_produto(produto_id):
     df = carregar_produtos()
-    df = df[df['id'] != produto_id]
+    df = df[df['id'] != int(produto_id)]
     df.to_csv(PRODUTOS_FILE, index=False)
 
 def editar_produto(produto_id, novo_nome, novo_preco):
     df = carregar_produtos()
-    df.loc[df['id'] == produto_id, ['nome', 'preco']] = [novo_nome, novo_preco]
+    df.loc[df['id'] == int(produto_id), ['nome', 'preco']] = [novo_nome, float(novo_preco)]
     df.to_csv(PRODUTOS_FILE, index=False)
 
 def listar_clientes():
@@ -73,17 +82,15 @@ def listar_clientes():
 
 def excluir_cliente(cliente_id):
     df = carregar_clientes()
-    df = df[df['id'] != cliente_id]
+    df = df[df['id'] != int(cliente_id)]
     df.to_csv(CLIENTES_FILE, index=False)
 
 def editar_cliente(cliente_id, novo_nome, novo_telefone):
     df = carregar_clientes()
-    df.loc[df['id'] == cliente_id, ['nome', 'telefone']] = [novo_nome, novo_telefone]
+    df.loc[df['id'] == int(cliente_id), ['nome', 'telefone']] = [novo_nome, novo_telefone]
     df.to_csv(CLIENTES_FILE, index=False)
-
-    
-    
-# Configuração do Streamlit
+      
+# Configuração de UI
 st.sidebar.title("Menu")
 pagina = st.sidebar.selectbox("Escolha uma opção",
                                ["Cadastrar Cliente", "Cadastrar Produto", "Registrar Venda", "Clientes", "Relatório de Vendas"])
@@ -91,25 +98,21 @@ pagina = st.sidebar.selectbox("Escolha uma opção",
 if pagina == "Cadastrar Cliente":
     st.header("Cadastrar Novo Cliente")
     nome = st.text_input("Nome")
-    telefone = st.text_input("Telefone")
+    telefone = st.text_input("Telefone (apenas números, com DDD)")
 
-    telefone_formatado = ""
-    if telefone_raw:
-        if len(telefone_raw) == 11 and telefone_raw.isdigit():
-            telefone_formatado = f"({telefone[:2]}) {telefone[2:7]}-{telefone[7:]}"
-            st.sucess(f"Telefone formatado: {telefone_formatado}")
-        elif telefone_raw:
-            st.warning("Formato de telefone inválido.")
-
-        if st.button("Salvar Cliente"):
-            if nome and telefone:
-                salvar_cliente(nome, telefone)
+    if st.button("Salvar Cliente"):
+        if nome and telefone:
+            if len(telefone) == 11 and telefone.isdigit():
+                telefone_formatado = f"({telefone[:2]}) {telefone[2:7]}-{telefone[7:]}"
+                salvar_cliente(nome, telefone_formatado)
                 st.success("Cliente cadastrado com sucesso!")
             else:
-                st.error("Por favor, preencha todos os campos corretamente.")
-
+                st.warning("Formato de telefone inválido. Salvo sem formatação.")
+                salvar_cliente(nome, telefone)
+                st.success("Cliente cadastrado com sucesso!")
+        else:
+            st.error("Por favor, preencha todos os campos corretamente.")
         
-
 elif pagina == "Cadastrar Produto":
     st.header("Cadastrar ou Editar Produto")
 
@@ -135,7 +138,7 @@ elif pagina == "Cadastrar Produto":
             produto_selecionado = st.selectbox("Selecione um produto", produtos['nome'])
             produto_row = produtos[produtos['nome'] == produto_selecionado].iloc[0]
             novo_nome = st.text_input("Nome do Produto", value=produto_row['nome'])
-            novo_preco = st.number_input("Preço", min_value=0.0, format="%.2f", value=produto_row['preco'])
+            novo_preco = st.number_input("Preço", min_value=0.0, format="%.2f", value=float(produto_row['preco']))
 
             col1, col2 = st.columns(2)
             with col1:
@@ -175,9 +178,8 @@ elif pagina == "Clientes":
             novo_nome = st.text_input("Nome do Cliente", value=cliente_row['nome'])
             novo_telefone = st.text_input("Telefone", value=cliente_row['telefone'])
             if st.button("Salvar Alterações"):
-                salvar_cliente(novo_nome, novo_telefone)
+                editar_cliente(cliente_row['id'], novo_nome, novo_telefone)
                 st.success("Cliente atualizado com sucesso!")
-
 
 elif pagina == "Registrar Venda":
     st.header("Registrar Venda")
@@ -188,62 +190,80 @@ elif pagina == "Registrar Venda":
         cliente_nome = st.selectbox("Cliente", clientes['nome'])
         cliente_id = clientes.loc[clientes['nome'] == cliente_nome, 'id'].values[0]
         quantidade = st.number_input("Quantidade", min_value=1, step=1)
+
         produto = carregar_produtos()
         if produto.empty:
             st.warning("Nenhum produto cadastrado. Cadastre um produto primeiro.")
         else:
             produto_nome = st.selectbox("Produto", produto['nome'])
             produto_preco = produto.loc[produto['nome'] == produto_nome, 'preco'].values[0]
-            st.write(f"Preço: R$ {produto_preco:.2f}")
-
+            st.write(f"Preço: R$ {float(produto_preco):.2f}")
 
         if st.button("Registrar Venda"):
-            if produto:
+            if not produto.empty:
                 salvar_venda(cliente_id, produto_nome, quantidade)
                 st.success("Venda registrada com sucesso!")
             else:
                 st.error("Por favor, preencha todos os campos.")
 
+# --- Relatório de Vendas ---
 elif pagina == "Relatório de Vendas":
     st.header("Relatório de Consumo Mensal")
     vendas = carregar_vendas()
     clientes = carregar_clientes()
+    produtos = carregar_produtos()
     
     if vendas.empty:
         st.warning("Nenhuma venda registrada.")
 
-    else: 
-        vendas['data'] = pd.to_datetime(vendas['data'])
-        vendas['mes'] = vendas['data'].dt.to_period('M').astype(str)
-
-        cliente_nome = ['todos'] + clientes['nome'].tolist()
-        cliente_selecionado = st.selectbox("Selecione um cliente", cliente_nome)
-
-        data_min = vendas['data'].min()
-        data_max = vendas['data'].max()
-        data_inicio = st.date_input("Data de Início", data_min)
-        data_fim = st.date_input("Data Final", data_max)
-
-    vendas_filtradas = vendas[(vendas['data'] >= pd.to_datetime(data_inicio)) & (vendas['data'] <= pd.to_datetime(data_fim))]
-
-    if cliente_selecionado != 'todos':
-        cliente_id = clientes.loc[clientes['nome'] == cliente_selecionado, 'id'].values[0]
-        vendas_filtradas = vendas_filtradas[vendas_filtradas['cliente_id'] == cliente_id]
-
-    if vendas_filtradas.empty:
-        st.info("Nenhuma venda encontrada para o período selecionado.")
-
     else:
-        
-        st.subheader("Consumo Mensal")
-        vendas_filtradas['mes'] = vendas_filtradas['data'].dt.to_period('M').astype(str)
-        vendas_mes = vendas_filtradas.groupby('mes')['quantidade'].sum()
-        st.line_chart(vendas_mes)
+        vendas['data'] = pd.to_datetime(vendas['data'], errors='coerce')
+        vendas = vendas.dropna(subset=['data'])
 
-        st.subheader("Produtos mais vendidos")
-        vendas_produto = vendas_filtradas.groupby('produto')['quantidade'].sum().reset_index()
-        st.bar_chart(vendas_produto)
-        
-                                                    
+        cliente_opcoes = ['todos'] + clientes['nome'].tolist()
+        cliente_selecionado = st.selectbox("Selecione um cliente", cliente_opcoes)
 
+        data_min = vendas['data'].min().date()
+        data_max = vendas['data'].max().date()
+        data_inicio = st.date_input('Data de início', data_min)
+        data_fim = st.date_input('Data final', data_max)
 
+        vendas_filtradas = vendas[(vendas['data'].dt.date >= data_inicio) & (vendas['data'].dt.date <= data_fim)]
+
+        if cliente_selecionado != 'todos' and not clientes.empty:
+            cliente_id = int(clientes.loc[clientes['nome'] == cliente_selecionado, 'id'].values[0])
+            vendas_filtradas = vendas_filtradas[vendas_filtradas['cliente_id'] == cliente_id]
+
+        if vendas_filtradas.empty:
+            st.warning("Nenhuma venda encontrada para o período selecionado.")
+        else:
+            vendas_filtradas['mes'] = vendas_filtradas['data'].dt.to_period('M').astype(str)
+
+            st.subheader('Consumo Mensal')
+            vendas_mes = vendas_filtradas.groupby('mes')['quantidade'].sum().reset_index()
+            st.line_chart(vendas_mes.set_index('mes'))
+
+            st.subheader('Produtos mais vendidos')
+            vendas_produto = vendas_filtradas.groupby('produto')['quantidade'].sum().reset_index()
+            st.bar_chart(vendas_produto.set_index('produto'))
+
+            st.subheader('Faturamento no período')
+            if not produtos.empty:
+                vendas_valor = vendas_filtradas.merge(
+                    produtos[['nome', 'preco']],
+                    left_on='produto', right_on='nome', how='left'
+                )
+                vendas_valor['preco'] = pd.to_numeric(vendas_valor['preco'], errors='coerce').fillna(0.0)
+                vendas_valor['valor_total'] = vendas_valor['quantidade'] * vendas_valor['preco']
+
+                total_periodo = vendas_valor['valor_total'].sum()
+                # Formato brasileiro simples
+                st.metric('Total R$', f'{total_periodo:,.2f}'.replace(",", "X").replace(".", ",").replace("X", "."))
+
+                st.dataframe(
+                    vendas_valor[['data', 'produto', 'quantidade', 'preco', 'valor_total']]
+                    .rename(columns={'preco': 'Preço (R$)', 'valor_total': 'Valor Total (R$)'}),
+                    use_container_width=True
+                )
+            else:
+                st.info('Cadastre produtos com preço para ver o faturamento.')
