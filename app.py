@@ -22,6 +22,8 @@ def carregar_clientes():
     if os.path.getsize(CLIENTES_FILE) == 0:
         return pd.DataFrame(columns=["id", "nome", "telefone"])
     df = pd.read_csv(CLIENTES_FILE)
+    if 'id' in df.columns:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
     return df
 
 def carregar_vendas():
@@ -31,6 +33,8 @@ def carregar_vendas():
     # Garante tipo numérico para quantidade
     if 'quantidade' in df.columns:
         df['quantidade'] = pd.to_numeric(df['quantidade'], errors='coerce').fillna(0).astype(int)
+    if 'cliente_id' in df.columns:
+        df['cliente_id'] = pd.to_numeric(df['cliente_id'], errors='coerce').fillna(0).astype(int)
     return df
 
 def carregar_produtos():
@@ -40,6 +44,8 @@ def carregar_produtos():
     # Garante tipo numérico para preço
     if 'preco' in df.columns:
         df['preco'] = pd.to_numeric(df['preco'], errors='coerce').fillna(0.0)
+    if 'id' in df.columns:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
     return df
 
 def salvar_cliente(nome, telefone):
@@ -168,18 +174,32 @@ elif pagina == "Clientes":
         st.dataframe(clientes.rename(columns={"id": "ID", "nome": "Nome", "telefone": "Telefone"}))
         st.subheader("Gerenciar Clientes")
         cliente_selecionado = st.selectbox("Selecione um cliente para gerenciar", clientes['nome'])
-        if st.button("Excluir Cliente"):
-            cliente_row = clientes[clientes['nome'] == cliente_selecionado].iloc[0]
-            excluir_cliente(cliente_row['id'])
-            st.success("Cliente excluído com sucesso!")
+        cliente_row = clientes[clientes['nome'] == cliente_selecionado].iloc[0]
 
-        if st.button("Editar Cliente"):
-            cliente_row = clientes[clientes['nome'] == cliente_selecionado].iloc[0]
-            novo_nome = st.text_input("Nome do Cliente", value=cliente_row['nome'])
-            novo_telefone = st.text_input("Telefone", value=cliente_row['telefone'])
-            if st.button("Salvar Alterações"):
-                editar_cliente(cliente_row['id'], novo_nome, novo_telefone)
-                st.success("Cliente atualizado com sucesso!")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            with st.form("editar_cliente"):
+                st.markdown("**Editar Cliente**")
+                novo_nome = st.text_input("Nome do Cliente", value=cliente_row['nome'], key="editar_nome_cliente")
+                novo_telefone = st.text_input("Telefone", value=cliente_row['telefone'], key="editar_telefone_cliente")
+                submit_editar = st.form_submit_button("Salvar Alterações")
+                if submit_editar:
+                    editar_cliente(cliente_row['id'], novo_nome, novo_telefone)
+                    st.success("Cliente atualizado com sucesso!")
+
+        with col2:
+            with st.form("excluir_cliente"):
+                st.markdown("**Excluir Cliente**")
+                st.caption(f"Cliente selecionado: {cliente_row['nome']}")
+                confirmar = st.checkbox("Confirmar exclusão", key="confirmar_excluir_cliente")
+                submit_excluir = st.form_submit_button("Excluir Cliente")
+                if submit_excluir:
+                    if confirmar:
+                        excluir_cliente(cliente_row['id'])
+                        st.warning("Cliente excluído com sucesso!")
+                    else:
+                        st.error("Marque a caixa para confirmar a exclusão.")
 
 elif pagina == "Registrar Venda":
     st.header("Registrar Venda")
